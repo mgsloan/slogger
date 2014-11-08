@@ -1,0 +1,40 @@
+name:              slogger
+version:           0.0.0
+synopsis:          Structured logger
+description:       TODO
+license:           BSD3
+license-file:      LICENSE
+author:            Michael Sloan
+maintainer:        Michael Sloan <mgsloan at gmail>
+homepage:          http://github.com/mgsloan/slogger
+bug-reports:       http://github.com/mgsloan/slogger/issues
+category:          Logging
+stability:         Experimental
+cabal-version:     >= 1.8
+build-type:        Simple
+source-repository head
+  type: git
+  location: git://github.com/mgsloan/slogger
+
+library
+    hs-source-dirs: .
+    ghc-options: -Wall
+    exposed-modules: Slogger
+
+    build-depends: base
+                 -- , containers
+                 , template-haskell
+                 , binary-conduit
+                 , conduit
+                 , monad-logger
+                 , mtl
+                 , binary
+                 , binary-typed
+                 , bytestring
+                 , conduit-extra
+                 , async
+                 , text
+                 , fast-logger
+                 , process
+                 , safe
+                 , lifted-base
