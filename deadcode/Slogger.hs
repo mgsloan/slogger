@@ -43,7 +43,6 @@ import           System.IO
 import           System.Log.FastLogger (ToLogStr(..), LogStr)
 import           System.Process
 
-type LogId = Int
 
 newtype SloggerT m a = SloggerT (StateT SloggerState m a)
     deriving (Functor, Applicative, Monad, MonadFix, MonadPlus, Alternative, MonadTrans, MonadIO, MonadLogger)
@@ -76,11 +75,6 @@ modifySloggerState f = do
 
 modifyParents :: Monad m => ([LogId] -> [LogId]) -> SloggerT m ()
 modifyParents f = modifySloggerState (\ss -> ss { idParents = f (idParents ss) })
-
-getFreshId :: MonadIO m => SloggerT m LogId
-getFreshId = do
-    ss <- getSloggerState
-    liftIO $ atomicModifyIORef (nextIdRef ss) (\i -> (i + 1, i))
 
 -- Log functions
 
@@ -125,20 +119,14 @@ logFork loc source level msg f = do
     pid <- fork $ logNest loc source level (msg) f
     putMVar pidVar pid
 
-data LogInfo = LogInfo
-    { logId :: LogId
-    , logParentId :: Maybe LogId
-    , dataOffset :: Integer
-    }
-
 logInternal :: (MonadLogger m, MonadIO m, ToLogStr msg) => Loc -> LogSource -> LogLevel -> Maybe LogId -> msg -> T.Text -> SloggerT m LogId
 logInternal loc source level mid msg typ = do
     i <- maybe getFreshId return mid
     ss <- getSloggerState
-    logInternal' loc source level msg typ (LogInfo i (headMay (idParents ss)) 0)
+    logInternal' loc source level msg typ (LogData i (headMay (idParents ss)) 0)
     return i
 
-logInternal' :: (MonadLogger m, ToLogStr msg) => Loc -> LogSource -> LogLevel -> msg -> T.Text -> LogInfo -> m ()
+logInternal' :: (MonadLogger m, ToLogStr msg) => Loc -> LogSource -> LogLevel -> msg -> T.Text -> LogData -> m ()
 logInternal' loc source level msg typ info = do
     let msg' = toLogStr msg <> " " <> serializeSD typ
             [ ("id", tshow (logId info))
