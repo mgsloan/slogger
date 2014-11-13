@@ -30,6 +30,7 @@ data LogChunk
     | LogSource LogSource
     | LogRef Name
     | LogDataOffset LogDataOffset
+    | LogEmpty
 
 instance Lift LogChunk where
     lift (LogLevel x) = [| LogLevel x |]
@@ -43,6 +44,7 @@ instance Lift LogChunk where
         txt = T.unpack x
     lift (LogRef x) = [| LogRef x |]
     lift (LogDataOffset x) = [| LogDataOffset x |]
+    lift LogEmpty = [| LogEmpty |]
 
 data LogInfo = LogInfo
     { infoLoc :: Loc

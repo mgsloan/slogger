@@ -30,7 +30,8 @@ import           Types
 
 --TODO:
 -- * Output the tags
--- * Switch to a Monoid on LogInfo
+--
+-- * Switch to a Monoid on LogInfo??
 
 data LogFuncSettings = LogFuncSettings
     { logJustTH :: Bool
