@@ -18,6 +18,15 @@ module Slog
     , sfork
     , runSloggerT
     , SloggerT
+    -- re-exports
+    , LogLevel (..)
+    , LogChunk (..)
+    , MonadSlogger (..)
+    , LogFunc (..)
+    , ToLogChunk (..)
+    , LogTag
+    , LogId
+    , LogDataOffset
     ) where
 
 import Control.Applicative
