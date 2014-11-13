@@ -40,6 +40,7 @@ import Control.Monad.State
 import Control.Monad.Trans.Control
 import Data.IORef
 import Data.Monoid
+import Language.Haskell.TH
 import LogFunc
 import Types
 
@@ -64,12 +65,22 @@ snest f = do
                     (LogTags (infoTags info))
                 setIdParents parents
 
-sfork :: (MonadSlogger m, LogFunc (m ()), MonadMask m, MonadBaseControl IO m) => m () -> m ()
-sfork f = do
+sfork :: Q Exp
+sfork = do
+    loc <- location
+    [| sforkInternal (Just $(liftLoc loc)) |]
+
+sfork' :: (MonadSlogger m, LogFunc (m ()), MonadMask m, MonadBaseControl IO m) => m () -> m ()
+sfork' = sforkInternal Nothing
+
+sforkInternal :: (MonadSlogger m, LogFunc (m ()), MonadMask m, MonadBaseControl IO m) => Maybe Loc -> m () -> m ()
+sforkInternal mloc f = do
     pidVar <- newEmptyMVar
     pid <- fork $ do
         pid <- takeMVar pidVar
-        () <- slog ("Forked thread " :: String) (show pid)
+        () <- case mloc of
+            Just loc -> slog ("Forked thread " :: String) (show pid) mloc
+            Nothing -> slog ("Forked thread " :: String) (show pid)
         snest f
     putMVar pidVar pid
 
