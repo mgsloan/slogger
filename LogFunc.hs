@@ -34,8 +34,6 @@ import           Types
 -- * Switch to a Monoid on LogInfo??
 
 data LogFuncSettings = LogFuncSettings
-    { logJustTH :: Bool
-    }
 
 $(deriveLift ''LogFuncSettings)
 
@@ -73,16 +71,15 @@ instance LogFunc B.ByteString where
 instance LogFunc T.Text where
     logFunc lfs = T.decodeUtf8 . fromLogStr . logFunc lfs
 
-instance LogFunc (Q Exp) where
+instance (a ~ Exp) => LogFunc (Q a) where
     logFunc lfs xs = do
         loc <- location
         --TODO: filtering
-        (if logJustTH lfs then appE (varE 'returnsUnit) else id) $
-            appsE $ varE 'logFunc : lift lfs : listE [] : (Prelude.map lift (xs) ++ [liftLoc loc])
+        appsE $ varE 'logFunc : lift lfs : listE [] : (Prelude.map lift (xs) ++ [liftLoc loc])
 
 --TODO: Consider moving this to a special, optional module intended to
 --be imported by applications?
-instance LogFunc (IO ()) where
+instance (a ~ ()) => LogFunc (IO a) where
     logFunc lfs xs = B.putStrLn (logFunc lfs xs)
 
 instance (ToLogChunk a, LogFunc b) => LogFunc (a -> b) where
@@ -111,6 +108,3 @@ instance ToLogChunk LB.ByteString
 -- Same as defaultLoc in Control.Monad.Logger
 defaultLoc :: Loc
 defaultLoc = Loc "<unknown>" "<unknown>" "<unknown>" (0,0) (0,0)
-
-returnsUnit :: m () -> m ()
-returnsUnit = id

@@ -13,9 +13,9 @@
 
 module Slog
     ( slog
-    , slog'
     , snest
     , sfork
+    , sfork'
     , runSloggerT
     , SloggerT
     -- re-exports
@@ -44,11 +44,11 @@ import Language.Haskell.TH
 import LogFunc
 import Types
 
-slog :: LogFunc a => a
-slog = logFunc (LogFuncSettings { logJustTH = True }) []
+-- TODO: remove logJustTH, and use the instance constraint trick to
+-- handle returning ()
 
-slog' :: LogFunc a => a
-slog' = logFunc (LogFuncSettings { logJustTH = False }) []
+slog :: LogFunc a => a
+slog = logFunc LogFuncSettings []
 
 snest :: (MonadSlogger m, LogFunc (m ()), MonadMask m) => m a -> m a
 snest f = do
@@ -73,14 +73,12 @@ sfork = do
 sfork' :: (MonadSlogger m, LogFunc (m ()), MonadMask m, MonadBaseControl IO m) => m () -> m ()
 sfork' = sforkInternal Nothing
 
-sforkInternal :: (MonadSlogger m, LogFunc (m ()), MonadMask m, MonadBaseControl IO m) => Maybe Loc -> m () -> m ()
+sforkInternal :: forall m. (MonadSlogger m, LogFunc (m ()), MonadMask m, MonadBaseControl IO m) => Maybe Loc -> m () -> m ()
 sforkInternal mloc f = do
     pidVar <- newEmptyMVar
     pid <- fork $ do
         pid <- takeMVar pidVar
-        () <- case mloc of
-            Just loc -> slog ("Forked thread " :: String) (show pid) mloc
-            Nothing -> slog ("Forked thread " :: String) (show pid)
+        slog ("Forked thread " :: String) (show pid) (maybe LogEmpty toLogChunk mloc) :: m ()
         snest f
     putMVar pidVar pid
 
