@@ -19,7 +19,7 @@ source-repository head
 library
     hs-source-dirs: .
     ghc-options: -Wall
-    exposed-modules: Slogger
+    exposed-modules: Slog
 
     build-depends: base
                  -- , containers
@@ -38,3 +38,8 @@ library
                  , process
                  , safe
                  , lifted-base
+                 , transformers
+                 , monad-control
+                 , transformers-base
+                 , exceptions
+                 , th-lift
