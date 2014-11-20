@@ -1,0 +1,13 @@
+module-template: ! 'module MODULE_NAME where
+
+'
+extensions: {}
+environment: default
+cabal-file: project.cabal
+version: 1
+ghc-args: []
+excluded-modules:
+- TypedData.hs
+- deadcode/Demo.hs
+- deadcode/OldSlogger.hs
+- deadcode/Slogger.hs

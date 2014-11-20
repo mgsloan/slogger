@@ -80,7 +80,7 @@ instance (a ~ Exp) => LogFunc (Q a) where
 --TODO: Consider moving this to a special, optional module intended to
 --be imported by applications?
 instance (a ~ ()) => LogFunc (IO a) where
-    logFunc lfs xs = B.putStrLn (logFunc lfs xs)
+    logFunc lfs xs = B8.putStrLn (logFunc lfs xs)
 
 instance (ToLogChunk a, LogFunc b) => LogFunc (a -> b) where
     logFunc lfs xs x = logFunc lfs (toLogChunk x : xs)

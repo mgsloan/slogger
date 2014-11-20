@@ -126,4 +126,4 @@ instance (MonadLogger m, MonadIO m) => MonadSlogger (SloggerT m) where
         old <- SloggerT get
         SloggerT . put $ old { idParents = xs }
 
-instance (MonadLogger m, MonadIO m) => LogFunc (SloggerT m ())
+instance (MonadLogger m, MonadIO m, a ~ ()) => LogFunc (SloggerT m a)
