@@ -1,3 +1,13 @@
+NOTE: WIP
+=========
+
+This project isn't yet ready for primetime, and is currently quite a
+mess.  I'm just uploading it to github for a bit to access it from
+elsewhere / share it with others.
+
+Slogger
+=======
+
 slogger is a fast structured logger.
 
 Design:
