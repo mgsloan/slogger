@@ -4,6 +4,7 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ExistentialQuantification #-}
 
 module LogFunc
     ( LogFuncSettings (..)
@@ -27,6 +28,10 @@ import           Prelude hiding (log)
 import           Safe (headMay)
 import           System.Log.FastLogger
 import           Types
+import           Data.Binary
+import           TypedData
+import           Data.Typeable
+import           Data.Text.Binary
 
 --TODO:
 -- * Output the tags
@@ -55,7 +60,7 @@ instance LogFunc LogInfo where
         (fromMaybe LevelInfo  $ headMay [x | LogLevel x <- xs])
         (concat [x | LogTags x <- xs])
         (headMay [x | LogDataOffset x <- xs])
-        (mconcat [x | LogChunk x <- xs])
+        (mconcat [x | LogChunk _ x <- xs])
 
 --TODO: turn into a function
 instance LogFunc LogStr where
@@ -87,8 +92,13 @@ instance (ToLogChunk a, LogFunc b) => LogFunc (a -> b) where
 
 class ToLogChunk a where
     toLogChunk :: a -> LogChunk
-    default toLogChunk :: ToLogStr a => a -> LogChunk
-    toLogChunk = LogChunk . toLogStr
+    default toLogChunk :: (Show a, Binary a, Typeable a) => a -> LogChunk
+    toLogChunk = defaultToLogChunk
+
+-- TODO: have the default truncate the interpolant
+
+defaultToLogChunk :: (Show a, Binary a, Typeable a) => a -> LogChunk
+defaultToLogChunk x = LogChunk (Just (toRawData x)) (toLogStr (show x))
 
 instance ToLogChunk LogChunk where toLogChunk = id
 instance ToLogChunk LogLevel where toLogChunk = LogLevel
@@ -98,12 +108,25 @@ instance ToLogChunk Name     where toLogChunk = LogRef
 -- Use the default implementation of toLogChunk to define instances
 -- for all ToLogChunk instances.
 
-instance ToLogChunk String
+-- Specialness of String and LogStr: not escaped
+--
+-- TODO: make sure this works well with IsString defaulting.
+instance ToLogChunk String where toLogChunk = LogChunk Nothing . toLogStr
+instance ToLogChunk LogStr where toLogChunk = LogChunk Nothing
+
 instance ToLogChunk T.Text
 instance ToLogChunk LT.Text
-instance ToLogChunk LogStr
 instance ToLogChunk B.ByteString
 instance ToLogChunk LB.ByteString
+instance ToLogChunk Int
+
+{-
+data Shown a = (Show a, Binary a) => Shown a
+
+data OnlyShown a = Show a => OnlyShown a
+
+data Store a = Binary a => Store LogStr a
+-}
 
 -- Same as defaultLoc in Control.Monad.Logger
 defaultLoc :: Loc

@@ -1,15 +1,17 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE TemplateHaskell           #-}
 
 module Types where
 
 import           Control.Monad.Logger
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as B8
-import           Data.Char (toLower)
-import qualified Data.Text as T
-import           Language.Haskell.TH (Name)
+import qualified Data.ByteString          as B
+import qualified Data.ByteString.Char8    as B8
+import           Data.Char                (toLower)
+import qualified Data.Text                as T
+import           Language.Haskell.TH      (Name)
 import           Language.Haskell.TH.Lift
 import           System.Log.FastLogger
+import           TypedData
 
 --FIXME: having 'getLastInfo' could be expensive when it comes to
 --freeing up memory...
@@ -26,40 +28,36 @@ type LogTag = T.Text
 data LogChunk
     = LogLevel LogLevel
     | LogTags [LogTag]
-    | LogChunk LogStr
+    | LogChunk (Maybe RawData) LogStr
     | LogLoc Loc
     | LogSource LogSource
-    | LogRef Name
+    | LogRef Name -- ^ NOTE: can only be used at compiletime
     | LogDataOffset LogDataOffset
     | LogEmpty
 
 instance Lift LogChunk where
-    lift (LogLevel x) = [| LogLevel x |]
-    lift (LogTags x) = [| LogTags (map T.pack txts) |]
-      where
-        txts = map T.unpack x
-    lift (LogChunk x) = [| LogChunk x |]
-    lift (LogLoc x) = [| LogLoc $(liftLoc x) |]
-    lift (LogSource x) = [| LogSource (T.pack txt) |]
-      where
-        txt = T.unpack x
-    lift (LogRef x) = [| LogRef x |]
-    lift (LogDataOffset x) = [| LogDataOffset x |]
-    lift LogEmpty = [| LogEmpty |]
+    lift (LogLevel      x  ) = [| LogLevel x |]
+    lift (LogTags       x  ) = [| LogTags x |]
+    lift (LogChunk      x y) = [| LogChunk x y |]
+    lift (LogLoc        x  ) = [| LogLoc $(liftLoc x) |]
+    lift (LogSource     x  ) = [| LogSource x |]
+    lift (LogRef        x  ) = [| LogRef x |]
+    lift (LogDataOffset x  ) = [| LogDataOffset x |]
+    lift LogEmpty            = [| LogEmpty |]
 
 data LogInfo = LogInfo
-    { infoLoc :: Loc
-    , infoSource :: LogSource
-    , infoLevel :: LogLevel
-    , infoTags :: [LogTag]
+    { infoLoc        :: Loc
+    , infoSource     :: LogSource
+    , infoLevel      :: LogLevel
+    , infoTags       :: [LogTag]
     , infoDataOffset :: Maybe LogDataOffset
-    , infoStr :: LogStr
+    , infoStr        :: LogStr
     }
 
 data LogData = LogData
-    { logId :: LogId
+    { logId       :: LogId
     , logParentId :: Maybe LogId
-    , dataOffset :: LogDataOffset
+    , dataOffset  :: LogDataOffset
     }
 
 type LogId = Int

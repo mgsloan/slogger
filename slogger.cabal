@@ -24,12 +24,10 @@ library
     build-depends: base
                  -- , containers
                  , template-haskell
-                 , binary-conduit
                  , conduit
                  , monad-logger
                  , mtl
                  , binary
-                 , binary-typed
                  , bytestring
                  , conduit-extra
                  , async
