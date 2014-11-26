@@ -39,6 +39,15 @@ Misc things to look at:
 
   * http://hackage.haskell.org/package/binary-typed
 
+Misc TODO
+=========
+
+* sforkUnmasked
+
+* Log masking state when it's something other than "Unmasked"?  (Control.Exception.getMaskingState)
+
+* Consider having the option of logging interesting other thread-global stuff.  One possible API for this would look like:
+
 Selector design
 ===============
 
