@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ParallelListComp #-}
 
 module LogFunc
     ( LogFuncSettings (..)
@@ -13,6 +14,7 @@ module LogFunc
     ) where
 
 import           Control.Monad.Logger
+import           Data.Binary
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as LB
@@ -21,19 +23,19 @@ import           Data.Monoid
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as LT
+import           Data.Traversable (forM)
+import           Data.Typeable
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Lift (deriveLift)
 import           Language.Haskell.TH.Syntax
 import           Prelude hiding (log)
 import           Safe (headMay)
 import           System.Log.FastLogger
-import           Types
-import           Data.Binary
 import           TypedData
-import           Data.Typeable
-import           Data.Text.Binary
+import           Types
 
 --TODO:
+--
 -- * Output the tags
 --
 -- * Switch to a Monoid on LogInfo??
@@ -45,36 +47,27 @@ $(deriveLift ''LogFuncSettings)
 class LogFunc a where
     logFunc :: LogFuncSettings -> [LogChunk] -> a
     default logFunc :: (MonadSlogger m, a ~ m ()) => LogFuncSettings -> [LogChunk] -> a
-    logFunc lfs xs = do
-        let info@(LogInfo loc source level tags mdat str) = logFunc lfs xs
-        lid <- getNextId
-        parents <- getIdParents
-        monadLoggerLog loc source level str
-        setLastInfo (Just (lid, info))
+    logFunc = defaultLogFunc
 
---TODO: turn into a function
-instance LogFunc LogInfo where
-    logFunc _ (Prelude.reverse -> xs) = LogInfo
-        (fromMaybe defaultLoc $ headMay [l | LogLoc l <- xs])
-        (fromMaybe ""         $ headMay [x | LogSource x <- xs])
-        (fromMaybe LevelInfo  $ headMay [x | LogLevel x <- xs])
-        (concat [x | LogTags x <- xs])
-        (headMay [x | LogDataOffset x <- xs])
-        (mconcat [x | LogChunk _ x <- xs])
+defaultLogFunc :: (MonadSlogger m, a ~ m ()) => LogFuncSettings -> [LogChunk] -> a
+defaultLogFunc lfs xs = do
+    let info@(LogInfo loc source level tags dat str) = renderLogInfo lfs xs
+    lid <- getNextId
+    parents <- getIdParents
+    moffset <- persistData dat
+    let metaDataStr = renderMetaData $ LogMetaData lid (headMay parents) moffset
+    monadLoggerLog loc source level (str <> metaDataStr)
+    setLastInfo (Just (lid, info))
 
---TODO: turn into a function
-instance LogFunc LogStr where
-    logFunc lfs xs = defaultLogStr loc source level str
-      where
-        LogInfo loc source level tags mdat str = logFunc lfs xs
+renderMetaData :: LogMetaData -> LogStr
+renderMetaData lmd =
+    " [slog id=" <> toLogStr (show (logId lmd)) <>
+    " pid=" <> toLogStr (show (fromMaybe (-1) (logParentId lmd))) <>
+    " offset=" <> toLogStr (show (fromMaybe (-1) (logDataOffset lmd))) <>
+    "]"
 
---TODO: turn into a function
-instance LogFunc B.ByteString where
-    logFunc lfs = fromLogStr . logFunc lfs
-
---TODO: turn into a function
-instance LogFunc T.Text where
-    logFunc lfs = T.decodeUtf8 . fromLogStr . logFunc lfs
+instance (ToLogChunk a, LogFunc b) => LogFunc (a -> b) where
+    logFunc lfs xs x = logFunc lfs (toLogChunk x : xs)
 
 instance (a ~ Exp) => LogFunc (Q a) where
     logFunc lfs xs = do
@@ -84,18 +77,40 @@ instance (a ~ Exp) => LogFunc (Q a) where
 
 --TODO: Consider moving this to a special, optional module intended to
 --be imported by applications?
-instance (a ~ ()) => LogFunc (IO a) where
-    logFunc lfs xs = B8.putStrLn (logFunc lfs xs)
 
-instance (ToLogChunk a, LogFunc b) => LogFunc (a -> b) where
-    logFunc lfs xs x = logFunc lfs (toLogChunk x : xs)
+-- instance (a ~ ()) => LogFunc (IO a) where
+--     logFunc lfs xs = B8.putStrLn (renderByteString lfs xs)
+
+-- renderText :: LogFuncSettings -> [LogChunk] -> T.Text
+-- renderText lfs = T.decodeUtf8 . fromLogStr . renderLogStr lfs
+
+-- renderByteString :: LogFuncSettings -> [LogChunk] -> B8.ByteString
+-- renderByteString lfs = fromLogStr . renderLogStr lfs
+
+-- renderLogStr :: LogFuncSettings -> [LogChunk] -> LogStr
+-- renderLogStr lfs xs = defaultLogStr loc source level str
+--   where
+--     LogInfo loc source level tags dat str = renderLogInfo lfs xs
+
+renderLogInfo :: LogFuncSettings -> [LogChunk] -> LogInfo
+renderLogInfo _ (Prelude.reverse -> xs) = LogInfo
+    (fromMaybe defaultLoc $ headMay [l | LogLoc l <- xs])
+    (fromMaybe ""         $ headMay [x | LogSource x <- xs])
+    (fromMaybe LevelInfo  $ headMay [x | LogLevel x <- xs])
+    (concat [x | LogTags x <- xs])
+    (LogData [(sp, dat) | sp <- spans | (Just dat, _) <- chunks])
+    (mconcat (map snd chunks))
+  where
+    chunks = [(x, y) | LogChunk x y <- xs]
+    spans = zipWith LogSpan offsets (tail offsets)
+    offsets = scanl (\acc (_, ll) -> acc + logStrLength ll) 0 chunks
+
+-- TODO: have the default truncate the interpolant
 
 class ToLogChunk a where
     toLogChunk :: a -> LogChunk
     default toLogChunk :: (Show a, Binary a, Typeable a) => a -> LogChunk
     toLogChunk = defaultToLogChunk
-
--- TODO: have the default truncate the interpolant
 
 defaultToLogChunk :: (Show a, Binary a, Typeable a) => a -> LogChunk
 defaultToLogChunk x = LogChunk (Just (toRawData x)) (toLogStr (show x))
@@ -114,8 +129,10 @@ instance ToLogChunk Name     where toLogChunk = LogRef
 instance ToLogChunk String where toLogChunk = LogChunk Nothing . toLogStr
 instance ToLogChunk LogStr where toLogChunk = LogChunk Nothing
 
-instance ToLogChunk T.Text
-instance ToLogChunk LT.Text
+-- FIXME
+-- instance ToLogChunk T.Text
+-- instance ToLogChunk LT.Text
+
 instance ToLogChunk B.ByteString
 instance ToLogChunk LB.ByteString
 instance ToLogChunk Int

@@ -35,7 +35,7 @@ readTypedData fp pos = withBinaryFile fp ReadMode (\h -> readTypedData' h pos)
 appendTypedData' :: forall a. (Typeable a, Binary a) => Handle -> a -> IO Integer
 appendTypedData' h x = do
     let ty = stripTypeRep (typeOf x)
-    appendData h (RawData ty (encode x))
+    appendData' h (RawData ty (encode x))
 
 readTypedData' :: forall a. (Typeable a, Binary a) => Handle -> Integer -> IO a
 readTypedData' h pos = do
@@ -55,8 +55,11 @@ data RawData = RawData TypeRep LB.ByteString
 
 instance Binary RawData where
 
-appendData :: Binary a => Handle -> a -> IO Integer
-appendData h raw = do
+appendData :: Binary a => FilePath -> a -> IO Integer
+appendData fp x = withBinaryFile fp AppendMode $ \h -> appendData' h x
+
+appendData' :: Binary a => Handle -> a -> IO Integer
+appendData' h raw = do
     pos <- hFileSize h
     LB.hPut h (encode raw)
     return pos

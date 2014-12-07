@@ -48,6 +48,18 @@ Misc TODO
 
 * Consider having the option of logging interesting other thread-global stuff.  One possible API for this would look like:
 
+* When displaying timestamps, highlight the digits that changed since
+  the prior
+
+* Allow display users to provide a function for the inline display of
+  the value
+
+* Store data even when no logchunks provide data, as it's handy to
+  know the bounds of fields
+
+* Far out: Fit FSM models to log behaviors.  Also mine invariants from
+  the stored data.
+
 Selector design
 ===============
 

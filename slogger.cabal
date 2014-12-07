@@ -20,9 +20,12 @@ library
     hs-source-dirs: .
     ghc-options: -Wall
     exposed-modules: Slog
+    other-modules: LogFunc
+                   Selector
+                   TypedData
+                   Types
 
     build-depends: base
-                 -- , containers
                  , template-haskell
                  , conduit
                  , monad-logger
@@ -41,3 +44,6 @@ library
                  , transformers-base
                  , exceptions
                  , th-lift
+                 , text-binary
+                 , th-lift-instances
+                 , parsec

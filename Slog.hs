@@ -43,6 +43,7 @@ import Data.Monoid
 import Language.Haskell.TH
 import LogFunc
 import Types
+import TypedData (appendData)
 
 -- TODO: remove logJustTH, and use the instance constraint trick to
 -- handle returning ()
@@ -125,5 +126,7 @@ instance (MonadLogger m, MonadIO m) => MonadSlogger (SloggerT m) where
     setIdParents xs = do
         old <- SloggerT get
         SloggerT . put $ old { idParents = xs }
+    persistData (LogData []) = return Nothing
+    persistData ld = liftIO $ fmap Just $ appendData "slog-data" ld
 
 instance (MonadLogger m, MonadIO m, a ~ ()) => LogFunc (SloggerT m a)

@@ -1,14 +1,17 @@
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE TemplateHaskell           #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Types where
 
 import           Control.Monad.Logger
-import qualified Data.ByteString          as B
-import qualified Data.ByteString.Char8    as B8
-import           Data.Char                (toLower)
-import qualified Data.Text                as T
-import           Language.Haskell.TH      (Name)
+import           Data.Binary (Binary)
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as B8
+import           Data.Char (toLower)
+import qualified Data.Text as T
+import           GHC.Generics (Generic)
+import           Language.Haskell.TH (Name)
 import           Language.Haskell.TH.Lift
 import           System.Log.FastLogger
 import           TypedData
@@ -16,12 +19,18 @@ import           TypedData
 --FIXME: having 'getLastInfo' could be expensive when it comes to
 --freeing up memory...
 
+-- TODO: probably better to have this just export the fundamental log
+-- handler.
+
+-- Make this independent of MonadLogger?
+
 class MonadLogger m => MonadSlogger m where
     getLastInfo :: m (Maybe (LogId, LogInfo))
     setLastInfo :: Maybe (LogId, LogInfo) -> m ()
     getNextId :: m LogId
     getIdParents :: m [LogId]
     setIdParents :: [LogId] -> m ()
+    persistData :: LogData -> m (Maybe LogDataOffset)
 
 type LogTag = T.Text
 
@@ -32,7 +41,6 @@ data LogChunk
     | LogLoc Loc
     | LogSource LogSource
     | LogRef Name -- ^ NOTE: can only be used at compiletime
-    | LogDataOffset LogDataOffset
     | LogEmpty
 
 instance Lift LogChunk where
@@ -42,7 +50,6 @@ instance Lift LogChunk where
     lift (LogLoc        x  ) = [| LogLoc $(liftLoc x) |]
     lift (LogSource     x  ) = [| LogSource x |]
     lift (LogRef        x  ) = [| LogRef x |]
-    lift (LogDataOffset x  ) = [| LogDataOffset x |]
     lift LogEmpty            = [| LogEmpty |]
 
 data LogInfo = LogInfo
@@ -50,14 +57,24 @@ data LogInfo = LogInfo
     , infoSource     :: LogSource
     , infoLevel      :: LogLevel
     , infoTags       :: [LogTag]
-    , infoDataOffset :: Maybe LogDataOffset
+    , infoData       :: LogData
     , infoStr        :: LogStr
     }
 
-data LogData = LogData
-    { logId       :: LogId
-    , logParentId :: Maybe LogId
-    , dataOffset  :: LogDataOffset
+data LogData = LogData [(LogSpan, RawData)]
+    deriving (Generic)
+
+instance Binary LogData where
+
+data LogSpan = LogSpan Int Int
+    deriving (Generic)
+
+instance Binary LogSpan
+
+data LogMetaData = LogMetaData
+    { logId         :: LogId
+    , logParentId   :: Maybe LogId
+    , logDataOffset :: Maybe LogDataOffset
     }
 
 type LogId = Int
