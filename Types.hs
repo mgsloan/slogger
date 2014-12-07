@@ -16,21 +16,9 @@ import           Language.Haskell.TH.Lift
 import           System.Log.FastLogger
 import           TypedData
 
---FIXME: having 'getLastInfo' could be expensive when it comes to
---freeing up memory...
-
--- TODO: probably better to have this just export the fundamental log
--- handler.
-
--- Make this independent of MonadLogger?
-
-class MonadLogger m => MonadSlogger m where
-    getLastInfo :: m (Maybe (LogId, LogInfo))
-    setLastInfo :: Maybe (LogId, LogInfo) -> m ()
-    getNextId :: m LogId
-    getIdParents :: m [LogId]
-    setIdParents :: [LogId] -> m ()
-    persistData :: LogData -> m (Maybe LogDataOffset)
+class Monad m => MonadSlogger m where
+    sloggerLog :: LogInfo -> m ()
+    sloggerNest :: m a -> m a
 
 type LogTag = T.Text
 

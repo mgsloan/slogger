@@ -51,20 +51,8 @@ class LogFunc a where
 
 defaultLogFunc :: (MonadSlogger m, a ~ m ()) => LogFuncSettings -> [LogChunk] -> a
 defaultLogFunc lfs xs = do
-    let info@(LogInfo loc source level tags dat str) = renderLogInfo lfs xs
-    lid <- getNextId
-    parents <- getIdParents
-    moffset <- persistData dat
-    let metaDataStr = renderMetaData $ LogMetaData lid (headMay parents) moffset
-    monadLoggerLog loc source level (str <> metaDataStr)
-    setLastInfo (Just (lid, info))
-
-renderMetaData :: LogMetaData -> LogStr
-renderMetaData lmd =
-    " [slog id=" <> toLogStr (show (logId lmd)) <>
-    " pid=" <> toLogStr (show (fromMaybe (-1) (logParentId lmd))) <>
-    " offset=" <> toLogStr (show (fromMaybe (-1) (logDataOffset lmd))) <>
-    "]"
+    _ <- sloggerLog (renderLogInfo lfs xs)
+    return ()
 
 instance (ToLogChunk a, LogFunc b) => LogFunc (a -> b) where
     logFunc lfs xs x = logFunc lfs (toLogChunk x : xs)

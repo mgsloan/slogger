@@ -39,11 +39,14 @@ import Control.Monad.Logger
 import Control.Monad.State
 import Control.Monad.Trans.Control
 import Data.IORef
+import Data.Maybe
 import Data.Monoid
 import Language.Haskell.TH
 import LogFunc
-import Types
+import Safe (headMay)
+import System.Log.FastLogger
 import TypedData (appendData)
+import Types
 
 -- TODO: remove logJustTH, and use the instance constraint trick to
 -- handle returning ()
@@ -51,20 +54,8 @@ import TypedData (appendData)
 slog :: LogFunc a => a
 slog = logFunc LogFuncSettings []
 
-snest :: (MonadSlogger m, LogFunc (m ()), MonadMask m) => m a -> m a
-snest f = do
-    minfo <- getLastInfo
-    case minfo of
-        Nothing -> f
-        Just (lid, info) -> do
-            parents <- getIdParents
-            setIdParents (lid : parents)
-            finally f $ do
-                () <- slog ("END " <> infoStr info)
-                    (infoLoc info)
-                    (LogSource (infoSource info))
-                    (LogTags (infoTags info))
-                setIdParents parents
+snest :: MonadSlogger m => m a -> m a
+snest = sloggerNest
 
 sfork :: Q Exp
 sfork = do
@@ -106,27 +97,66 @@ instance MonadBaseControl b m => MonadBaseControl b (SloggerT m) where
     liftBaseWith = defaultLiftBaseWith StMSloggerT
     restoreM = defaultRestoreM unStMSloggerT
 
+instance (MonadLogger m, MonadIO m, MonadMask m, a ~ ()) => LogFunc (SloggerT m a)
+
+instance (MonadLogger m, MonadIO m, MonadMask m) => MonadSlogger (SloggerT m) where
+    sloggerLog info@(LogInfo loc source level tags dat str) = do
+        lid <- getNextId
+        parents <- getIdParents
+        moffset <- persistData dat
+        let metaDataStr = renderMetaData $ LogMetaData lid (headMay parents) moffset
+        monadLoggerLog loc source level (str <> metaDataStr)
+        setLastInfo (Just (lid, info))
+    sloggerNest f = do
+        minfo <- getLastInfo
+        case minfo of
+            Nothing -> f
+            Just (lid, info) -> do
+                parents <- getIdParents
+                setIdParents (lid : parents)
+                finally f $ do
+                    () <- slog ("END " <> infoStr info)
+                        (infoLoc info)
+                        (LogSource (infoSource info))
+                        (LogTags (infoTags info))
+                    setIdParents parents
+
 data SloggerState = SloggerState
     { nextIdRef :: IORef LogId
     , lastInfoRef :: IORef (Maybe (LogId, LogInfo))
     , idParents :: [LogId]
     }
 
-instance (MonadLogger m, MonadIO m) => MonadSlogger (SloggerT m) where
-    getLastInfo = do
-        ss <- SloggerT get
-        liftIO $ readIORef (lastInfoRef ss)
-    setLastInfo minfo = do
-        ss <- SloggerT get
-        liftIO $ writeIORef (lastInfoRef ss) minfo
-    getNextId = do
-        ss <- SloggerT get
-        liftIO $ atomicModifyIORef (nextIdRef ss) (\i -> (i + 1, i))
-    getIdParents = liftM idParents (SloggerT get)
-    setIdParents xs = do
-        old <- SloggerT get
-        SloggerT . put $ old { idParents = xs }
-    persistData (LogData []) = return Nothing
-    persistData ld = liftIO $ fmap Just $ appendData "slog-data" ld
+getLastInfo :: MonadIO m => SloggerT m (Maybe (LogId, LogInfo))
+getLastInfo = do
+    ss <- SloggerT get
+    liftIO $ readIORef (lastInfoRef ss)
 
-instance (MonadLogger m, MonadIO m, a ~ ()) => LogFunc (SloggerT m a)
+setLastInfo :: MonadIO m => Maybe (LogId, LogInfo) -> SloggerT m ()
+setLastInfo minfo = do
+    ss <- SloggerT get
+    liftIO $ writeIORef (lastInfoRef ss) minfo
+
+getNextId :: MonadIO m => SloggerT m LogId
+getNextId = do
+    ss <- SloggerT get
+    liftIO $ atomicModifyIORef (nextIdRef ss) (\i -> (i + 1, i))
+
+persistData :: MonadIO m => LogData -> m (Maybe LogDataOffset)
+persistData (LogData []) = return Nothing
+persistData ld = liftIO $ fmap Just $ appendData "slog-data" ld
+
+getIdParents :: Monad m => SloggerT m [LogId]
+getIdParents = liftM idParents (SloggerT get)
+
+setIdParents :: Monad m => [LogId] -> SloggerT m ()
+setIdParents xs = do
+    old <- SloggerT get
+    SloggerT . put $ old { idParents = xs }
+
+renderMetaData :: LogMetaData -> LogStr
+renderMetaData lmd =
+    " [slog id=" <> toLogStr (show (logId lmd)) <>
+    " pid=" <> toLogStr (show (fromMaybe (-1) (logParentId lmd))) <>
+    " offset=" <> toLogStr (show (fromMaybe (-1) (logDataOffset lmd))) <>
+    "]"
