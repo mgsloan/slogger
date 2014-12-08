@@ -76,9 +76,9 @@ sforkInternal mloc f = do
 
 runSloggerT :: MonadIO m => SloggerT m a -> m a
 runSloggerT (SloggerT m) = do
-    lastInfoRef <- liftIO $ newIORef Nothing
     nextIdRef <- liftIO $ newIORef 1
-    let idParents = []
+    let lastInfo = Nothing
+        idParents = []
     evalStateT m SloggerState {..}
 
 newtype SloggerT m a = SloggerT { unSloggerT :: StateT SloggerState m a }
@@ -123,36 +123,30 @@ instance (MonadLogger m, MonadIO m, MonadMask m) => MonadSlogger (SloggerT m) wh
 
 data SloggerState = SloggerState
     { nextIdRef :: IORef LogId
-    , lastInfoRef :: IORef (Maybe (LogId, LogInfo))
+    , lastInfo :: Maybe (LogId, LogInfo)
     , idParents :: [LogId]
     }
 
-getLastInfo :: MonadIO m => SloggerT m (Maybe (LogId, LogInfo))
-getLastInfo = do
-    ss <- SloggerT get
-    liftIO $ readIORef (lastInfoRef ss)
+getLastInfo :: Monad m => SloggerT m (Maybe (LogId, LogInfo))
+getLastInfo = SloggerT (gets lastInfo)
 
 setLastInfo :: MonadIO m => Maybe (LogId, LogInfo) -> SloggerT m ()
-setLastInfo minfo = do
-    ss <- SloggerT get
-    liftIO $ writeIORef (lastInfoRef ss) minfo
+setLastInfo minfo = SloggerT $ modify $ \old -> old { lastInfo = minfo }
+
+getIdParents :: Monad m => SloggerT m [LogId]
+getIdParents = SloggerT (gets idParents)
+
+setIdParents :: Monad m => [LogId] -> SloggerT m ()
+setIdParents xs = SloggerT $ modify $ \old -> old { idParents = xs }
 
 getNextId :: MonadIO m => SloggerT m LogId
 getNextId = do
-    ss <- SloggerT get
-    liftIO $ atomicModifyIORef (nextIdRef ss) (\i -> (i + 1, i))
+    ref <- SloggerT (gets nextIdRef)
+    liftIO $ atomicModifyIORef ref (\i -> (i + 1, i))
 
 persistData :: MonadIO m => LogData -> m (Maybe LogDataOffset)
 persistData (LogData []) = return Nothing
 persistData ld = liftIO $ fmap Just $ appendData "slog-data" ld
-
-getIdParents :: Monad m => SloggerT m [LogId]
-getIdParents = liftM idParents (SloggerT get)
-
-setIdParents :: Monad m => [LogId] -> SloggerT m ()
-setIdParents xs = do
-    old <- SloggerT get
-    SloggerT . put $ old { idParents = xs }
 
 renderMetaData :: LogMetaData -> LogStr
 renderMetaData lmd =
