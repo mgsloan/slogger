@@ -24,8 +24,6 @@ import           System.Process
 import           Language.Haskell.TH.Lift
 import           Instances.TH.Lift ()
 
--- TODO: memoize type serialization?  Serialize to a separate file?
-
 appendTypedData :: (Typeable a, Binary a) => FilePath -> a -> IO Integer
 appendTypedData fp x = withBinaryFile fp AppendMode (\h -> appendTypedData' h x)
 
@@ -88,7 +86,6 @@ runGhciWithData fp pos = do
             yield (encodeUtf8 (T.pack ("x <- " ++ cmd ++ "\n"))) $$ sinkHandle hin
             (sourceHandle stdin $$ sinkHandle hin)
     return ()
-
 
 -- Copied from binary-typed package, by David Luposchainsky
 -- http://hackage.haskell.org/package/binary-typed

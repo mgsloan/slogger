@@ -1,6 +1,6 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Types where
 
@@ -59,7 +59,7 @@ data LogSpan = LogSpan Int Int
 
 instance Binary LogSpan
 
-data LogMetaData = LogMetaData
+data LogMetadata = LogMetadata
     { logId         :: LogId
     , logParentId   :: Maybe LogId
     , logDataOffset :: Maybe LogDataOffset

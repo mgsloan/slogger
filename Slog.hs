@@ -1,13 +1,13 @@
 {-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -48,11 +48,8 @@ import System.Log.FastLogger
 import TypedData (appendData)
 import Types
 
--- TODO: remove logJustTH, and use the instance constraint trick to
--- handle returning ()
-
 slog :: LogFunc a => a
-slog = logFunc LogFuncSettings []
+slog = logFunc []
 
 snest :: MonadSlogger m => m a -> m a
 snest = sloggerNest
@@ -62,15 +59,19 @@ sfork = do
     loc <- location
     [| sforkInternal (Just $(liftLoc loc)) |]
 
-sfork' :: (MonadSlogger m, LogFunc (m ()), MonadMask m, MonadBaseControl IO m) => m () -> m ()
+sfork' :: (MonadSlogger m, MonadMask m, MonadBaseControl IO m)
+       => m () -> m ()
 sfork' = sforkInternal Nothing
 
-sforkInternal :: forall m. (MonadSlogger m, LogFunc (m ()), MonadMask m, MonadBaseControl IO m) => Maybe Loc -> m () -> m ()
+sforkInternal :: forall m. (MonadSlogger m, MonadMask m, MonadBaseControl IO m)
+              => Maybe Loc -> m () -> m ()
 sforkInternal mloc f = do
     pidVar <- newEmptyMVar
     pid <- fork $ do
         pid <- takeMVar pidVar
-        slog ("Forked thread " :: String) (show pid) (maybe LogEmpty toLogChunk mloc) :: m ()
+        defaultLogFunc [ toLogChunk $ "Forked thread " ++ show pid
+                       , maybe LogEmpty toLogChunk mloc
+                       ]
         snest f
     putMVar pidVar pid
 
@@ -82,7 +83,9 @@ runSloggerT (SloggerT m) = do
     evalStateT m SloggerState {..}
 
 newtype SloggerT m a = SloggerT { unSloggerT :: StateT SloggerState m a }
-    deriving (Functor, Applicative, Monad, MonadFix, MonadPlus, Alternative, MonadTrans, MonadIO, MonadLogger, MonadMask, MonadThrow, MonadCatch)
+    deriving ( Functor, Applicative, Monad, MonadFix, MonadPlus, Alternative
+             , MonadTrans, MonadIO, MonadLogger, MonadMask, MonadThrow
+             , MonadCatch)
 
 instance MonadBase b m => MonadBase b (SloggerT m) where
     liftBase = liftBaseDefault
@@ -104,8 +107,8 @@ instance (MonadLogger m, MonadIO m, MonadMask m) => MonadSlogger (SloggerT m) wh
         lid <- getNextId
         parents <- getIdParents
         moffset <- persistData dat
-        let metaDataStr = renderMetaData $ LogMetaData lid (headMay parents) moffset
-        monadLoggerLog loc source level (str <> metaDataStr)
+        let metaData = renderMetadata $ LogMetadata lid (headMay parents) moffset
+        monadLoggerLog loc source level (str <> metaData)
         setLastInfo (Just (lid, info))
     sloggerNest f = do
         minfo <- getLastInfo
@@ -148,8 +151,8 @@ persistData :: MonadIO m => LogData -> m (Maybe LogDataOffset)
 persistData (LogData []) = return Nothing
 persistData ld = liftIO $ fmap Just $ appendData "slog-data" ld
 
-renderMetaData :: LogMetaData -> LogStr
-renderMetaData lmd =
+renderMetadata :: LogMetadata -> LogStr
+renderMetadata lmd =
     " [slog id=" <> toLogStr (show (logId lmd)) <>
     " pid=" <> toLogStr (show (fromMaybe (-1) (logParentId lmd))) <>
     " offset=" <> toLogStr (show (fromMaybe (-1) (logDataOffset lmd))) <>
