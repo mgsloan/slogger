@@ -1,125 +1,86 @@
-NOTE: WIP
-=========
+I haven't worked on this project in a while.  I'm going to get back
+into it.  Here's a braindump of the planned flexibility of slogger,
+along with a plan of attack that initially discards all that scope
+creep, and then lets it creep back in in stages ;)
 
-This project isn't yet ready for primetime, and is currently quite a
-mess.  I'm just uploading it to github for a bit to access it from
-elsewhere / share it with others.
+Interface options
+=================
 
-Slogger
-=======
+* Optional TH
 
-slogger is a fast structured logger.
+* Non tree structured logging atop MonadLogger instances
 
-Design:
+* Tree structured logging based on thread id atop MonadLoggerIO instances
 
-* Each log message is suffixed with [slog=(1,2,3)] where the tuple is
-  (nodeID,parentID,byteOffset)
+* Tree structured logging based on MonadSlogger
 
-* The binary serialized data is [(LogSpan, (TypeRep, ByteString))].
-  In other words, it's a list of annotated spans.
+  - Required for having dump files
 
-* Log functions are variadic, concatenating some arguments into the
-  log message, using others as semantic tags.
+  - Required for merging distributed logs - need a way to store which
+    instance it came from (which will also specify the dump file)
 
+Serialization format options
+============================
 
-Consider: Should this be unified with the GHC pretty print modifications?
+I'd like to have all of the following options:
 
-TODO: Current format doesn't look too good - consider revision
+* JSON log content
 
-Misc things to look at:
+* JSON dump, alongside textual logs
 
-  * Use precise clock
-    https://code.google.com/p/greg/source/browse/client/haskell/System/Log/PreciseClock.hs
+* Binary dump, alongside textual logs
 
-  * http://hackage.haskell.org/package/hslogstash
+The inline JSON datatype would include the constructor for referring
+to the dump and the "inline" constructor.
 
-  * http://hackage.haskell.org/package/raven-haskell
-
-  * http://hackage.haskell.org/package/rotating-log
-
-  * http://hackage.haskell.org/package/binary-typed
-
-Misc TODO
-=========
-
-* sforkUnmasked
-
-* Log masking state when it's something other than "Unmasked"?  (Control.Exception.getMaskingState)
-
-* Consider having the option of logging interesting other thread-global stuff.  One possible API for this would look like:
-
-* When displaying timestamps, highlight the digits that changed since
-  the prior
-
-* Allow display users to provide a function for the inline display of
-  the value
-
-* Store data even when no logchunks provide data, as it's handy to
-  know the bounds of fields
-
-* Far out: Fit FSM models to log behaviors.  Also mine invariants from
-  the stored data.
-
-Selector design
-===============
-
-In order for hierarchical logs to be useful, a query language is
-needed.  Here are some desired features:
-
-* Substring match on logs.  "This is the current syntax"
-
-* Regex match on logs.  /Maybe this syntax/
-
-* Match on tags:  .tagIdSyntax
-
-* Match on source levels:  .LevelWarn
-
-* Run haskell predicates on the data in matched logs.  [predicate arg1]
-
-* Various selectors borrowed from CSS
-
-* Extensions beyond CSS - what do we do about OR? is it nestable?
-
-Selector usage
-==============
-
-Selectors can be used for a wide variety of purposes:
-
-1) Filtering emitted log messages at runtime
-
-2) Filtering emitted log messages at compiletime.  This will work by
-the user declaring instances of some typeclass(es), where the argument
-is a type level string of the selector.  The TH code will pick these
-up by using reify, and then apply them to the known portion of the
-log.
-
--- If there are no LogWhiteList instances, then "*" is assumed.
-
-class LogWhiteList (x :: String)
-
-class LogBlackList (x :: String)
-
-A further interesting optimization might be to have the TH splices
-output specialized code for pruning the currently active selectors.
-In other words, it's possible to precompute if a given log line
-definitely does or definitely does not match a component of a
-selector.
-
-3) Analyzing logs
-
-I'd like the semantics of these to be identical no matter the phase.
-In other words, if you pre-emptively know your analysis, you can stick
-it in at a different phase than log analysis.
-
-Selector meaning
+Development plan
 ================
 
-There needs to be some additional syntax in order to differentiate
-between the different effects of the selectors.
+Milestone 1: Basic structured logging
+-------------------------------------
 
-* Blacklist vs whitelist
+Plain logging function which outputs inline JSON
 
-* Whole path vs just selected element
+(no special monad class, no TH, no polyvariadic stuff, probably not
+very convenient)
 
-This will need a bit more thought - will it be possible in the UI to
-view children without their parents?
+Milestone 2: Log viewer with GHCI
+---------------------------------
+
+Log viewer which integrates with GHCI to automatically bring the
+structured data into scope
+
+Milestone 3: Tree structure
+---------------------------
+
+Add support for tree structure to the library and viewer.  This means
+adding a 'MonadSlogger' class and SloggerT transformer.
+
+Milestone 4: Polyvariadic TH
+----------------------------
+
+Add support for polyvariadic TH log statements
+
+Milestone 6: Dump files
+-----------------------
+
+Add support for dumping data rather than inlining it
+
+Milestone 7: Distributed logs
+-----------------------------
+
+Add support to the library for tagging logs with the instance they
+came from.  Name dump files after this instance.  This way, logging
+that merges together logs from multiple servers can still be viewed.
+
+Support multiple dump files per instance?  (so that files don't get
+too huge + can just delete old ones)
+
+Milestone 8: Misc hacks
+-----------------------
+
+Use some global state to support structured logging without having a
+special monad.  Helpful for quick printf-ey logging
+
+Even allow non-IO functions to log.  E.g. you could log in a view
+pattern.
